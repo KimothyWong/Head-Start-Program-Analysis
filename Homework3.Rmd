@@ -1,0 +1,439 @@
+---
+title: "Homework 3"
+subtitle: "Quantitative Methods III"
+author: "Kimothy Wong"
+date: "2023-05-30"
+output:
+  pdf_document: default
+header-includes:
+- \usepackage{floatrow}
+- \floatsetup[figure]{capposition=top}
+nocite: '@*'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      message = FALSE,
+                      warning = FALSE)
+
+setwd("/Users/kimothywong/Desktop")
+load("nlsy_deming.Rda")
+
+library(plm) # for random effects and fixed effects
+library(tidyverse) # for filter and mutate 
+library(stargazer)
+library(wooldridge)
+library(estimatr)
+library(fixest)
+library(lmtest)
+library(sandwich)
+library(kableExtra)
+
+
+```
+
+**1)**
+Summarize the data. Create a new variable called rep that is identical to repeat. Write nlsy <-
+nlsy %>% mutate(rep = ‘repeat‘). (Repeat is a function in R that cannot be overwritten, so this
+will make R happy.) Create group-level means of specific variables. Use the following code:
+nlsy_summary <-
+  nlsy %>%
+  group_by(head_start) %>%
+  summarize(...)
+  
+Instead of ..., replace the following variables with their means: black, lninc_0to3, momed, rep,
+and somecoll. What can you say about the backgrounds of children who participated in Head Start
+relative to those who did not?
+
+**Code**
+```{r}
+nlsy <- nlsy_deming_raw
+nlsy <- nlsy %>% mutate(rep = `repeat`)
+
+
+nlsy_summary <- nlsy %>%
+  group_by(head_start) %>%
+  summarize(
+    "Black" = mean(black, na.rm = T), 
+    "Log Housing Income 0-3" = mean(lninc_0to3, na.rm = T), 
+    "Mother Education" = mean(momed, na.rm = T), 
+    "Repeat" = mean(`repeat`, na.rm = T), 
+    "Some college" = mean(somecoll, na.rm = T), 
+    )
+```
+
+**Coefficient Test**
+```{r}
+nlsy_summary %>%
+  kbl(caption = "Summary") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+```
+
+The table shows the comparison of the background between the children who participated in Head Start (1) and the children who did not (0). 
+
+Black is the average of the black variable of all students. We can tell from the children who participated in Head Start, there were 51.8% of children have a black ethnicity. On the other hand, we can tell from the children who did not participate in Head Start, there were only 26.9% of children have a black ethnicity. Over 50% of the children who have black ethnicity have participated in the Head Start program, indicating that the early childhood education were in need for black children.
+
+Log household income of children from 0 to 3.  We can tell from the table that, the average household income of the children who participated in Head Start (9.783574) are comparatively lower than the children who did not participate in Head Start (10.144365). The difference in average household income suggests that Head Start is reaching and serving children from lower-income families.
+
+Mother's year of education.  We can tell from the table that, the average mother's year of education of the children who participated in Head Start (11.50284) are comparatively lower than the children who did not participate in Head Start (11.75311	). The difference in average mother's year of education suggests that Head Start aims to provide educational and developmental support to children and families who may face socioeconomic disadvantages, including those with lower levels of education.
+
+Repeat is a binary variable indicating the race of each student, Did not repeat (0) and Repeat (1). Mean_rep is the average of the repeat variable of all students. We can tell from the children who participated in Head Start, there were 40.7% of children who have repeated. On the other hand, we can tell from the children who did not participate in Head Start, there were only 28.9% of children who did not repeat. It suggests that Head Start provides more support to the children with grade repetition.
+
+Some college is the average of the attend some college variable of all students.  We can tell from the children who participated in Head Start, there were 26.9% of children who have attended some college. On the other hand, we can tell from the children who did not participate in Head Start, there were only 32.9% of children who did not attend college. From these percentages, it appears that there is a lower incidence of college attendance among children who participated in Head Start compared to those who did not participate. However, it is important to note that these percentages alone do not provide a comprehensive understanding of the factors influencing college attendance.
+
+\newpage
+
+**2**
+Let’s compare the POLS, RE, and FE univariate associations between Head Start participation and
+age 5-6 test scores using the plm command.
+
+**(a)** As a first step, estimate the association between Head Start participation and age 5-6 test scores
+using pooled OLS. Make sure you estimate standard errors correctly. (Write coeftest(reg_pols,
+vcov = function(x) vcovG(x, type = “sss”, cluster = “group”)) to see the correct out-
+put.) If we assume Head Start participation is exogenous, what can we conclude about the effects
+of Head Start on test scores? Be sure to explain the magnitude of the estimated effect. Is it
+reasonable to assume that Head Start participation is exogenous?
+
+**Code**
+```{r}
+reg_pols <- 
+  plm(
+    comp_score_5to6  ~ head_start,
+    model = "pooling",
+    index = "mom_id",
+    nlsy
+  )
+```
+
+**Coefficient Test**
+```{r}
+coeftest(reg_pols,vcov = function(x) vcovG(x, type = "sss", cluster = "group"))
+```
+If we assume Head Start participation is exogenous,  we can conclude that participating in Head Start has a statistically significant effect on children  composite scores from 5 to 6 years old. The coefficient estimate for the variable "head_start1" is -5.8421e+00, indicating that, on average, Head Start participation is associated with a decrease in test scores by approximately 5.8421 units. It suggests that Head Start participation have an negative impact on children children composite scores from 5 to 6 years old compared to the children who did not participate in Head Start.
+
+Exogeneity implies that Head Start participation is not influenced by other factors that affect test scores. However, in reality, there may be other variables, such as family characteristics, socio-economic factors, or selection processes, that could affect both Head Start participation and test scores. If these variables are not adequately accounted for, it may introduce bias into the estimated effects of Head Start participation on test scores. Therefore, it is not reasonable to assume that Head Start participation is exogenous.
+
+\newpage
+
+**(b)** Now estimate the same association using a random effects model (with random effects at the
+mother level). How do the results compare with OLS? Does the comparison make you more or
+less confident that OLS or random effects can shed light on the causal effect of Head Start on
+test scores? (Hint: in the absence of family-level omitted variables, OLS and random effects are
+both unbiased estimators, so they should be similar.)
+
+**Code**
+```{r}
+re <- plm(comp_score_5to6  ~ head_start,
+          index = c("mom_id"),
+          model = "random",
+          nlsy)
+
+```
+
+**Coefficent Test**
+```{r}
+coeftest(re, vcov = function(x) vcovG(x, type = "sss", cluster = "group"))
+```
+
+Compared to the OLS model, the estimate of the random model is -2.514, which shows that the estimate of the random effect mode shows a light negative effect. Since the coefficient of these two models are different,  we have less confident that ols or random effect model can shed light on the causal effect of Head Start on test scores since the both models are biased.
+
+\newpage
+
+**2c)** Now estimate a model using fixed effects at the mother level. What do the results imply about
+the effects of Head Start on test scores? If the fixed effects results are different from those in
+your answer from question (2b), explain why.
+
+**Code**
+```{r}
+
+fe <- plm(comp_score_5to6 ~ head_start,
+              index = "mom_id",
+              model = "within",
+              nlsy)
+```
+
+**Coefficient Test**
+```{r}
+coeftest(fe, vcov = function(x) vcovG(x, type = "sss", method = "white1"))
+```
+
+The estimate of the fixed effect model is 7.633, implying that after controlling all mother level characteristics, the head start participation has a positive effect on the children from 5 to 6. Therefore, assuming the children have the same mother, participating in the Head Start program will increase 7.633 units of composite scores. The fixed effect result is different than those in my answer from question (2b) because the lambda captures the mother level differences between children that affect test scores, and by controlling for these fixed effects, the fixed effects model provides an estimation of the within-individual or within-cluster effect of Head Start participation. However, the individual-specific effects are assumed to be random variables that are uncorrelated with the independent variables in the random effects model, so the random effect model does not fully control all the mother level characteristics.
+
+\newpage
+
+**2d)** Perform a Hausman test for the comparison between the FE and RE models, and explain what
+the results of the test imply for the specification you’d prefer to use (and why).
+
+**Table**
+```{r, results='asis'}
+stargazer(reg_pols, re, fe,
+  type = "latex",
+  dep.var.labels = "test score from 5-6",
+  covariate.labels = c("Head Start"),
+  column.labels = c("POLS","RE","FE"),
+  title = "POLS, RE and FE regression",
+  header=FALSE)
+```
+
+**Hausam Test**
+```{r}
+phtest(re,fe)
+```
+The null hypothesis of the Hausman test assumes that the random effects in the RE model are not correlated with the independent variables in the regression equation. The p-value is very small (1.369e-11), suggesting strong evidence against the null hypothesis of no difference between the two models. Based on these results, it is advisable to choose the fixed effects model over the random effects model to account for the potential endogeneity or omitted variable bias. The fixed effects model can provide more reliable estimates of the causal effects of the variables of interest in the presence of these issues.
+
+\newpage
+
+**3)** Now let’s estimate mother fixed effects models of the association between Head Start participation
+and age 5-6 test scores using the feols command. Run three fixed effects regressions: a “univariate”
+regression using only Head Start participation as an explanatory variable, a regression with all pre-
+Head Start control variables other than PPVT, and another “univariate” regression but on the subset
+of data that has no missing values for pre-Head Start control variables. (Hint: check the problem
+set’s introduction to determine when variables are determined. Do not use PPVT.) Which control
+variables can you include in the fixed effects regression, and which can’t you include? Why?
+
+**Code**
+```{r}
+
+fe_feols_uni <- plm(comp_score_5to6  ~ head_start,
+          index = "mom_id",
+          model = "within",
+          nlsy)
+
+
+fe_feols_all <- plm(comp_score_5to6  ~ mom_id + male + firstborn + head_start +
+                      lninc_0to3 + dadhome_0to3 +lnbw,
+          index = "mom_id",
+          model = "within",
+          nlsy)
+
+nlsy_1 <- nlsy[!is.na(nlsy$mom_id) & !is.na(nlsy$momed) & !is.na(nlsy$hispanic) & 
+                 !is.na(nlsy$black) & !is.na(nlsy$male) & !is.na(nlsy$firstborn) &
+                 !is.na(nlsy$head_start) &
+                 !is.na(nlsy$lninc_0to3) & !is.na(nlsy$dadhome_0to3) & !is.na(nlsy$lnbw), ]
+
+fe_feols_na <- plm(comp_score_5to6  ~ head_start,
+          index = "mom_id",
+          model = "within",
+          nlsy_1)
+
+```
+
+
+**Table**
+```{r, results='asis'}
+stargazer(fe_feols_uni,fe_feols_all,fe_feols_na,
+          type = "latex",
+          dep.var.labels = "Test score from 5-6",
+          covariate.labels = c("Male", "Firstborn", "Head Start", "Log Housing income 0-3",
+                               "Living with Dad 0-3", "Log Birth Weight"),
+          column.labels = c("Univariate","Multivariate","UnivariateNA"),
+          title = "Univariate, Multivariate and Univariate No Na regression",
+          header=FALSE)
+```
+
+We can include the control variables that were determined prior to Head Start participation and those variables should be constant across all mother id. Therefore, we should include the within mom id variables such as male, firstborn, log housing income aged 0-3, living with father aged 0-3 and log birth weight. At the same time, we should exclude the between mom id variables such as mom id, Black, Hispanic, and mom education due to the collinearity.
+
+\newpage
+
+**4)**Some advocates for early-childhood education suggest that the effects of programs like Head Start
+are long-lasting. For children ages 7-10, carry out fixed effects analyses (without control variables)
+of test scores. Does Head Start participation have similar effects on test scores in later childhood, or
+do the effects fade out with age? To make the test scores comparable across ages, standardize them
+by dividing them by their standard deviations. (Hint: write mutate(std_score_ = comp_score_
+/ sd(comp_score_, na.rm = TRUE)) for each score.)
+
+**Code**
+```{r}
+nlsy <- nlsy |> mutate(std_score_5to6 = comp_score_5to6/ sd(comp_score_5to6, na.rm = TRUE))
+nlsy <- nlsy |> mutate(std_score_7to10 = comp_score_7to10/ sd(comp_score_7to10, na.rm = TRUE))
+nlsy <- nlsy |> mutate(std_score_11to14 = comp_score_11to14/ sd(comp_score_11to14, na.rm = TRUE))
+
+fe_lm_5_6 <- lm(std_score_5to6  ~ head_start + as.factor(mom_id), nlsy)
+fe_lm_7_10 <- lm(std_score_7to10  ~ head_start + as.factor(mom_id), nlsy)
+fe_lm_11_14 <- lm(std_score_11to14  ~ head_start + as.factor(mom_id), nlsy)
+
+fixed_5_6 <- lm_robust(std_score_5to6  ~ head_start,
+                        fixed_effects = mom_id,
+                        se_type = "stata",
+                        clusters = mom_id,
+                        nlsy)
+
+
+fixed_7_10 <- lm_robust(std_score_7to10  ~ head_start,
+                        fixed_effects = mom_id,
+                        se_type = "stata",
+                        clusters = mom_id,
+                        nlsy)
+
+fixed_11_14 <- lm_robust(std_score_11to14  ~ head_start,
+                        fixed_effects = mom_id,
+                        se_type = "stata",
+                        clusters = mom_id,
+                        nlsy)
+```
+
+**Table**
+```{r, results='asis'}
+
+stargazer(fe_lm_5_6,fe_lm_7_10,fe_lm_11_14, 
+          keep = c("head_start"),
+          covariate.labels = ("Head Start"),
+          se = starprep(fixed_5_6, fixed_7_10, fixed_11_14, clusters = nlsy$mom_id, se_type = "stata"),
+          p = starprep(fixed_5_6, fixed_7_10, fixed_11_14, stat = "p.value"),
+          title = "FE for Standard Score at Different Age",
+          type = "latex",
+          header=FALSE)
+
+```
+In Model (1), the coefficient for Head Start is 0.341, indicating a positive relationship with the dependent variable std_score_5to6. The coefficient is statistically significant at the 5% level.
+
+In Model (2), the coefficient for Head Start is 0.159, indicating a positive relationship with the dependent variable std_score_7to10. The coefficient is statistically significant at the 10% level.
+
+In Model (3), the coefficient for Head Start is 0.153, indicating a positive relationship with the dependent variable std_score_11to14. The coefficient is statistically significant at the 10% level.
+
+We can conclude that Head Start participation have similar effects on test scores in later childhood, but faded out with age. Meanwhile, Head Start participation have more positive effect on children test score from aged 5 to 6. 
+
+\newpage
+
+**5)** Estimate similar fixed effects models of the effect of Head Start but on longer-term outcomes besides
+test scores. (Hint: Check the problem set’s introduction to determine when variables are determined.
+Ignore HS2_FE90.) Many of these outcomes are binary but use linear models. Interpret your results.
+
+**Code**
+```{r}
+
+re_5 <- plm(nlsy$`repeat` ~ head_start,
+          index = c("mom_id"),
+          model = "within",
+          nlsy)
+
+le_5 <- plm(learndis ~ head_start,
+          index = c("mom_id"),
+          model = "within",
+          nlsy)
+
+hs_5 <- plm(hsgrad ~ head_start,
+          index = c("mom_id"),
+          model = "within",
+          nlsy)
+
+so_5 <- plm(somecoll ~ head_start,
+          index = c("mom_id"),
+          model = "within",
+          nlsy)
+
+id_5 <- plm(idle ~ head_start,
+          index = c("mom_id"),
+          model = "within",
+          nlsy)
+
+fp_5 <- plm(fphealth ~ head_start,
+          index = c("mom_id"),
+          model = "within",
+          nlsy)
+```
+
+**Table**
+```{r, results='asis'}
+stargazer(re_5, le_5, hs_5, so_5, id_5, fp_5,
+          keep = c("head_start"),
+          covariate.labels = c("Head Start"),
+          column.sep.width = "1pt",
+          digits = 2,
+          omit.stat = c("f","ser"),
+          dep.var.labels = c("Repeat", "Learning Disability", "High School Graduate",
+                             "Some College", "Work/Study", "Self Rated health"),
+          title = "FE for Longer Term Effect",
+          type = "latex",
+          font.size = "small",
+          header=FALSE)
+```
+
+In the longer term, the coefficient estimate (-0.054) of Repeat suggests that Head Start participation is associated with a decrease in the likelihood of repeating a grade. This effect is statistically significant at the 0.1 level (*). 
+
+The coefficient estimate (-0.037) of learning disability suggests that Head Start participation is associated with a decrease in the likelihood of having a learning disability. This effect is statistically significant at the 0.01 level (***).
+
+The coefficient estimate (0.131) of high school graduate indicates that Head Start participation is associated with an increase in the likelihood of high school graduate. This effect is statistically significant at the 0.01 level (***).
+
+The coefficient estimate (0.074) of some college suggests that Head Start participation is associated with an increase in the likelihood of pursuing some college education. This effect is statistically significant at the 0.01 level (**).
+
+The coefficient estimate (-0.073) of work/study suggests that Head Start participation is associated with a decrease in the likelihood of children who are not working and studying at the same time. This effect is statistically significant at the 0.01 level (***).
+
+The coefficient estimate (-0.066) of self rated fair/poor health suggests that Head Start participation is associated with a decrease in self-rated fair or poor health. This effect is statistically significant at the 0.01 level (***).
+
+\newpage
+
+**6)** Do the effects of Head Start participation on longer-term outcomes vary by race/ethnicity? By sex? Re-run the same six regressions from question (5) but with three interaction terms and their base levels.
+
+**Code**
+```{r}
+
+re_6 <- plm(nlsy$`repeat` ~ head_start + male +
+                      hispanic:head_start + black:head_start + male:head_start,
+                      index = c("mom_id"),
+                      model = "within",
+                      data = nlsy)
+
+
+le_6 <- plm(learndis ~ head_start  +  male +
+                      hispanic:head_start + black:head_start + male:head_start,
+                      index = c("mom_id"),
+                      model = "within",
+                      data = nlsy)
+
+hs_6 <- plm(hsgrad ~ head_start + male +
+                      hispanic:head_start + black:head_start + male:head_start,
+                      index = c("mom_id"),
+                      model = "within",
+                      data = nlsy)
+
+
+so_6 <- plm(somecoll ~ head_start + male +
+                      hispanic:head_start + black:head_start + male:head_start,
+                      index = c("mom_id"),
+                      model = "within",
+                      data = nlsy)
+
+
+id_6 <- plm(idle ~ head_start + male +
+                      hispanic:head_start + black:head_start + male:head_start,
+                      index = c("mom_id"),
+                      model = "within",
+                      data = nlsy)
+
+fp_6 <- plm(fphealth ~ head_start + male +
+                      hispanic:head_start + black:head_start + male:head_start,
+                      index = c("mom_id"),
+                      model = "within",
+                      data = nlsy)
+```
+
+**Table**
+```{r, results='asis'}
+stargazer(re_6, le_6, hs_6, so_6, id_6, fp_6,
+          covariate.labels = c("Head Start", "Male", "Head Start*Hispanic", 
+                               "Head Start*Black", "Head Start*Male"),
+          dep.var.labels = c("Repeat", "Learning Disability", "High School Graduate",
+                             "Some College", "Work/Study", "Self Rated health"),
+          column.sep.width = "1pt",
+          digits = 2,
+          omit.stat = c("f","ser"),
+          type = "latex",
+          font.size = "small",
+          title = "FE Interaction for Longer Term Effect",
+          header=FALSE)
+
+```
+
+In terms of interaction, the effects of Head Start participation on longer-term outcomes only vary by black variable. The coefficient estimate (0.104) of Head Start and Black interaction suggests that Head Start participation is associated with a 0.1 probability increase in self-rated fair or poor health for black children. This effect is statistically significant at the 0.1 level (*).
+
+\newpage
+
+**7** The Biden administration advocates expanding federal funding for early-childhood education pro-
+grams, while the Trump administration argued for cuts. Based on your results, which position seems
+better supported by evidence? Are you comfortable using your results to predict the effects of such
+an expansion? Why or why not?
+
+Based on the standard score result, I believed that the expansion of the federal funding for early-childhood programs is better supported by the evidence. From the standard score test results, we can tell that the standard score test results is most increased in children aged from 5 to 6 for those who participated in the Head Start program. Moreover, in terms of the longer term outcomes of children, there were more children graduated from high school and attending college. Meanwhile, there were fewer children with learning disability, grade repetition, not working and studying at the same time, and having a poor rated health. Therefore, the government should expand the funding for early-childhood education programs so there will be more student benefited from it.
+
+
